@@ -196,10 +196,6 @@ impl Chip8 {
         let opcode = Opcode(self.memory[self.pc], self.memory[self.pc + 1]);
         opcode.disassemble(self.pc);
 
-        // TODO: not sure it's good idea to do this before parsing opcode
-        // may be overwritten by jumps?
-        self.inc_pc();
-
         match Opcode::high_nib(opcode.0) {
             0x00 => match opcode.1 {
                 0xe0 => self.op_disp_clear(),
@@ -212,7 +208,11 @@ impl Chip8 {
                 // Jumps to address NNN.
                 let target = opcode.nnn();
                 // TODO: Infinite loop
-                assert!(target != self.pc as u16);
+                assert!(target as usize != self.pc);
+                print!(
+                    "TRYING TO JMP t {:02x} pc {:02x}\n",
+                    target as usize, self.pc
+                );
                 self.pc = target.into();
             }
             0x03 => {
@@ -260,6 +260,14 @@ impl Chip8 {
             },
             _ => unimplemented!(),
         }
+
+        match Opcode::high_nib(opcode.0) {
+            // one of the JUMP instruction, this will change the PC by itself,
+            // not need to increment it
+            0x01 => {}
+            // regular opcode, move forward to the next one
+            _ => self.inc_pc(),
+        }
     }
 
     /// Clears the screen
@@ -285,8 +293,9 @@ impl Chip8 {
 
 fn debugger(mut chip8: Chip8) -> io::Result<()> {
     print!("Enter debug mode:\n");
-    print!("press 'n' - for next instruction\n");
-    print!("press 'q' - to exit\n");
+    print!("\t'r' - to run program\n");
+    print!("\t'n' - for next instruction\n");
+    print!("\t'q' - to exit\n");
     let mut buffer = String::new();
     let mut last_cmd = String::new();
     loop {
@@ -303,6 +312,12 @@ fn debugger(mut chip8: Chip8) -> io::Result<()> {
             "n" => {
                 chip8.emulate_op();
                 chip8.dump_registers();
+            }
+            "r" => {
+                loop {
+                    chip8.emulate_op();
+                    chip8.dump_registers();
+                }
             }
             "q" => {
                 break;
