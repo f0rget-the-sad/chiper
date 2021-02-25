@@ -3,6 +3,8 @@ use std::fs::File;
 use std::io::{self, stdin, Read, Write};
 use std::process;
 
+mod screen;
+
 const MEMORY_START: usize = 0x200;
 const MEMORY_SIZE: usize = 0x1000;
 
@@ -139,6 +141,9 @@ struct Chip8 {
 }
 
 impl Chip8 {
+    pub const SCREEN_WIDTH: u32 = 62;
+    pub const SCREEN_HEIGHT: u32 = 32;
+
     fn new() -> Chip8 {
         Chip8 {
             v: [0; 16],
@@ -313,12 +318,10 @@ fn debugger(mut chip8: Chip8) -> io::Result<()> {
                 chip8.emulate_op();
                 chip8.dump_registers();
             }
-            "r" => {
-                loop {
-                    chip8.emulate_op();
-                    chip8.dump_registers();
-                }
-            }
+            "r" => loop {
+                chip8.emulate_op();
+                chip8.dump_registers();
+            },
             "q" => {
                 break;
             }
@@ -338,11 +341,14 @@ fn main() -> io::Result<()> {
         eprintln!("usage: chiper <path to rom>");
         process::exit(1);
     }
-    debug!("STARTINGG ======== with {}\n", args[1]);
+    //debug!("STARTINGG ======== with {}\n", args[1]);
     let mut chip8 = Chip8::new();
     chip8.load_rom(&args[1])?;
-    debugger(chip8);
+    chip8.emulate_op();
+    chip8.dump_registers();
+    //debugger(chip8);
     //chip8.dump_memory();
     //return Ok(());
+    screen::run().unwrap();
     Ok(())
 }
