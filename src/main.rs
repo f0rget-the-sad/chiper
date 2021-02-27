@@ -1,12 +1,17 @@
 use std::env;
 use std::fs::File;
-use std::io::{self, stdin, Read, Write};
+use std::io::{self, stdin, Error, ErrorKind, Read, Write};
 use std::process;
 
 mod screen;
 
 const MEMORY_START: usize = 0x200;
 const MEMORY_SIZE: usize = 0x1000;
+pub const SCREEN_WIDTH: u32 = 62;
+pub const SCREEN_HEIGHT: u32 = 32;
+
+const SCREEN_MEMORY_START: u32 = 0xf00;
+const SCREEN_MEMORY_END: u32 = 0xfff;
 
 // TODO: use logger?
 #[cfg(debug_assertions)]
@@ -120,7 +125,7 @@ impl Opcode {
     }
 }
 
-struct Chip8 {
+struct Chip8<T> {
     ///  16 8-bit data registers named V0 to VF
     v: [u8; 16],
     /// Memory address register
@@ -138,13 +143,12 @@ struct Chip8 {
     memory: [u8; MEMORY_SIZE],
     /// amount of memory occupied by rom
     used_memory: usize,
+
+    screen: T,
 }
 
-impl Chip8 {
-    pub const SCREEN_WIDTH: u32 = 62;
-    pub const SCREEN_HEIGHT: u32 = 32;
-
-    fn new() -> Chip8 {
+impl<T: screen::Screen> Chip8<T> {
+    fn new(screen: T) -> Chip8<T> {
         Chip8 {
             v: [0; 16],
             i: 0,
@@ -153,6 +157,7 @@ impl Chip8 {
             pc: MEMORY_START,
             memory: [0; MEMORY_SIZE],
             used_memory: 0,
+            screen: screen,
         }
     }
 
@@ -213,7 +218,7 @@ impl Chip8 {
                 // Jumps to address NNN.
                 let target = opcode.nnn();
                 // TODO: Infinite loop
-                assert!(target as usize != self.pc);
+                //assert!(target as usize != self.pc);
                 print!(
                     "TRYING TO JMP t {:02x} pc {:02x}\n",
                     target as usize, self.pc
@@ -254,7 +259,7 @@ impl Chip8 {
                 self.i = opcode.nnn();
             }
             0x0d => {
-                self.op_draw();
+                self.op_draw(opcode.x(), opcode.y(), opcode.n());
             }
             0x0f => match opcode.1 {
                 0x1e => {
@@ -280,58 +285,100 @@ impl Chip8 {
         // TODO: think should we use sdl2 or webasm, or both
         // Ideally would be to provide trait:Display(Renderer) and anyone who implements
         // it can be passed to chip8 to be use as graphical interface
-        //self.op_unimplemented();
+        self.screen.clear();
     }
 
     /// Draw the sprite
-    fn op_draw(&mut self) {
+    fn op_draw(&mut self, x: usize, y: usize, len: u8) {
         // Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels and a height
         // of N+1 pixels. Each row of 8 pixels is read as bit-coded starting from memory
         // location I; I value doesn’t change after the execution of this instruction. As
         // described above, VF is set to 1 if any screen pixels are flipped from set to
         // unset when the sprite is drawn, and to 0 if that doesn’t happen
-    }
-
-    /// skips unimplemented instructions
-    fn op_unimplemented(&mut self) {}
-}
-
-fn debugger(mut chip8: Chip8) -> io::Result<()> {
-    print!("Enter debug mode:\n");
-    print!("\t'r' - to run program\n");
-    print!("\t'n' - for next instruction\n");
-    print!("\t'q' - to exit\n");
-    let mut buffer = String::new();
-    let mut last_cmd = String::new();
-    loop {
-        print!("(chiper - db) ");
-        io::stdout().flush().ok().expect("Could not flush stdout");
-        stdin().read_line(&mut buffer)?;
-        let mut cmd = buffer.trim_end();
-        if cmd.is_empty() {
-            cmd = &last_cmd;
-        } else {
-            last_cmd = cmd.to_string();
-        }
-        match cmd {
-            "n" => {
-                chip8.emulate_op();
-                chip8.dump_registers();
-            }
-            "r" => loop {
-                chip8.emulate_op();
-                chip8.dump_registers();
-            },
-            "q" => {
+        let mut cy = y;
+        for i in 0..len {
+            cy += i as usize;
+            if cy >= SCREEN_HEIGHT as usize {
+                // sprite goes out of screen, stop drawing
                 break;
             }
-            unknown => {
-                eprint!("Unknown debug command '{}'\n", unknown);
+
+            let sprite_line = self.memory[(self.i + i as u16) as usize];
+            let mut cx = x;
+            print!("{:02x}\n", sprite_line);
+            for bi in (0..8).rev() {
+                let mut px = ((sprite_line & (1 << bi)) != 0) as u8;
+                print!("{}", px);
+
+                if px != 0 {
+                    cx += bi;
+                    if cx >= SCREEN_WIDTH as usize {
+                        // sprite goes out of screen, stop drawing line
+                        break;
+                    }
+                    // Determine the address of the effected byte on the screen
+                    let screen_line_idx = SCREEN_MEMORY_START as usize + cy * 8 + cx / 8;
+                    let screen_line = self.memory[screen_line_idx];
+                    // Determine the effected bit in the byte
+                    let screen_px = screen_line & (1 << (cx % 8));
+                    if screen_px != 0 {
+                        self.v[0xf] = 1;
+                    }
+
+                    // Write the effected bit to the screen memory
+                    self.memory[screen_line_idx] ^= px;
+
+                    // draw px
+                    px ^= screen_px;
+                    if px == 0 {
+                        self.screen.clear_px(cx as i32, cy as i32);
+                    } else {
+                        self.screen.draw_px(cx as i32, cy as i32);
+                    }
+                }
             }
+            println!();
+            break;
         }
-        buffer.clear();
     }
-    Ok(())
+
+    fn debugger(&mut self) -> io::Result<()> {
+        print!("Enter debug mode:\n");
+        print!("\t'r' - to run program\n");
+        print!("\t'n' - for next instruction\n");
+        print!("\t'q' - to exit\n");
+        let mut buffer = String::new();
+        let mut last_cmd = String::new();
+        loop {
+            print!("(chiper - db) ");
+            io::stdout().flush().ok().expect("Could not flush stdout");
+            stdin().read_line(&mut buffer)?;
+            let mut cmd = buffer.trim_end();
+            if cmd.is_empty() {
+                cmd = &last_cmd;
+            } else {
+                last_cmd = cmd.to_string();
+            }
+            match cmd {
+                "n" => {
+                    self.emulate_op();
+                    self.dump_registers();
+                }
+                "r" => loop {
+                    self.emulate_op();
+                    self.dump_registers();
+                },
+                "q" => {
+                    break;
+                }
+                unknown => {
+                    eprint!("Unknown debug command '{}'\n", unknown);
+                }
+            }
+            buffer.clear();
+        }
+        Ok(())
+    }
 }
 
 fn main() -> io::Result<()> {
@@ -342,13 +389,14 @@ fn main() -> io::Result<()> {
         process::exit(1);
     }
     //debug!("STARTINGG ======== with {}\n", args[1]);
-    let mut chip8 = Chip8::new();
+    let screen = screen::sdl_init().map_err(|e| Error::new(ErrorKind::Other, e))?;
+    let mut chip8 = Chip8::new(screen);
     chip8.load_rom(&args[1])?;
-    chip8.emulate_op();
-    chip8.dump_registers();
+    chip8.dump_memory();
+    chip8.debugger()?;
     //debugger(chip8);
     //chip8.dump_memory();
     //return Ok(());
-    screen::run().unwrap();
+    //screen::run().unwrap();
     Ok(())
 }
