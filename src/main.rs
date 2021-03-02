@@ -259,7 +259,11 @@ impl<T: screen::Screen> Chip8<T> {
                 self.i = opcode.nnn();
             }
             0x0d => {
-                self.op_draw(opcode.x(), opcode.y(), opcode.n());
+                self.op_draw(
+                    self.v[opcode.x()].into(),
+                    self.v[opcode.y()].into(),
+                    opcode.n(),
+                );
             }
             0x0f => match opcode.1 {
                 0x1e => {
@@ -295,9 +299,10 @@ impl<T: screen::Screen> Chip8<T> {
         // location I; I value doesn’t change after the execution of this instruction. As
         // described above, VF is set to 1 if any screen pixels are flipped from set to
         // unset when the sprite is drawn, and to 0 if that doesn’t happen
-        let mut cy = y;
+        println!("start coords {}:{}", x, y);
+        let mut cy;
         for i in 0..len {
-            cy += i as usize;
+            cy = y + i as usize;
             if cy >= SCREEN_HEIGHT as usize {
                 // sprite goes out of screen, stop drawing
                 break;
@@ -305,13 +310,10 @@ impl<T: screen::Screen> Chip8<T> {
 
             let sprite_line = self.memory[(self.i + i as u16) as usize];
             let mut cx = x;
-            print!("{:02x}\n", sprite_line);
             for bi in (0..8).rev() {
                 let mut px = ((sprite_line & (1 << bi)) != 0) as u8;
-                print!("{}", px);
 
                 if px != 0 {
-                    cx += bi;
                     if cx >= SCREEN_WIDTH as usize {
                         // sprite goes out of screen, stop drawing line
                         break;
@@ -333,12 +335,12 @@ impl<T: screen::Screen> Chip8<T> {
                     if px == 0 {
                         self.screen.clear_px(cx as i32, cy as i32);
                     } else {
+                        println!("{}:{}", cx, cy);
                         self.screen.draw_px(cx as i32, cy as i32);
                     }
                 }
+                cx += 1;
             }
-            println!();
-            break;
         }
     }
 
