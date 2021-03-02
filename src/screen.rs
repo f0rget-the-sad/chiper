@@ -39,7 +39,7 @@ impl SdlScreen {
         let video_subsystem = sdl_context.video()?;
         let window = video_subsystem
             .window(
-                "rust-sdl2 demo: Cursor",
+                "Chiper: CHIP-8 emulator",
                 SdlScreen::WIDTH,
                 SdlScreen::HEIGHT,
             )
