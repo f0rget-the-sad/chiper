@@ -1,7 +1,5 @@
 extern crate sdl2;
 
-use crate::{SCREEN_HEIGHT, SCREEN_WIDTH};
-
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
@@ -9,6 +7,8 @@ use sdl2::rect::Rect;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
 use sdl2::Sdl;
+
+use crate::chip8::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
 pub trait Screen {
     /// Creates new Screen
@@ -24,6 +24,9 @@ pub trait Screen {
 
     /// Draw black pixel at pox `x`, `y`
     fn clear_px(&mut self, x: i32, y: i32);
+
+    /// Visualize all changes
+    fn present(&mut self);
 }
 
 pub struct SdlScreen {
@@ -61,8 +64,6 @@ impl Screen for SdlScreen {
     fn clear(&mut self) {
         self.canvas.set_draw_color(Color::BLACK);
         self.canvas.clear();
-        // XXX: not sure about present here, better to use once per loop
-        self.canvas.present();
     }
 
     fn draw_px(&mut self, x: i32, y: i32) {
@@ -75,7 +76,6 @@ impl Screen for SdlScreen {
                 SdlScreen::PX_SIZE,
             ))
             .unwrap();
-        self.canvas.present();
     }
 
     fn clear_px(&mut self, x: i32, y: i32) {
@@ -88,6 +88,9 @@ impl Screen for SdlScreen {
                 SdlScreen::PX_SIZE,
             ))
             .unwrap();
+    }
+
+    fn present(&mut self) {
         self.canvas.present();
     }
 }
