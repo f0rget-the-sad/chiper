@@ -1,15 +1,22 @@
 use std::fs::File;
 use std::io::{self, stdin, Read, Write};
-use std::thread;
-use std::time;
 
 use crate::screen::Screen;
+
+/*
+ * Memory mapping, total 4k (0x1000)
+ * ---------------------------------------------------------------
+ * | 0x0-0x200 | 0x200 - 0xEA0 | 0xEA0 - 0xEFF |  0xF00 - 0xFFF  |
+ * |interpreter| available mem |  call stack   | display refresh |
+ * ---------------------------------------------------------------
+ */
 
 const MEMORY_START: usize = 0x200;
 const MEMORY_SIZE: usize = 0x1000;
 pub const SCREEN_WIDTH: u32 = 62;
 pub const SCREEN_HEIGHT: u32 = 32;
 
+const STACK_MEMORY_END: usize = 0xf00;
 const SCREEN_MEMORY_START: u32 = 0xf00;
 //const SCREEN_MEMORY_END: u32 = 0xfff;
 
@@ -72,6 +79,9 @@ impl Opcode {
                 // Jumps to address NNN.
                 debug!("jmp\t\t{:03x}", self.nnn());
             }
+            0x02 => {
+                debug!("call\t\t{:03x}", self.nnn());
+            }
             0x03 => {
                 // Skips the next instruction if VX equals NN.
                 // Usually the next instruction is a jump to skip a code block
@@ -131,7 +141,7 @@ pub struct Chip8<T> {
     /// Memory address register
     i: u16,
     /// Stack pointer
-    sp: u16,
+    sp: usize,
     /// Program counter
     pc: usize,
     /*
@@ -152,8 +162,7 @@ impl<T: Screen> Chip8<T> {
         Chip8 {
             v: [0; 16],
             i: 0,
-            // TODO: why here not at 0xEA0?
-            sp: 0xfa0,
+            sp: STACK_MEMORY_END,
             pc: MEMORY_START,
             memory: [0; MEMORY_SIZE],
             used_memory: 0,
@@ -204,7 +213,7 @@ impl<T: Screen> Chip8<T> {
 
     fn emulate_op(&mut self) {
         let opcode = Opcode(self.memory[self.pc], self.memory[self.pc + 1]);
-        //opcode.disassemble(self.pc);
+        opcode.disassemble(self.pc);
 
         match Opcode::high_nib(opcode.0) {
             0x00 => match opcode.1 {
@@ -217,14 +226,24 @@ impl<T: Screen> Chip8<T> {
             0x01 => {
                 // Jumps to address NNN.
                 let target = opcode.nnn();
-                // TODO: Infinite loop
-                //assert!(target as usize != self.pc);
                 if target as usize == self.pc {
-                    loop {
-                        thread::sleep(time::Duration::from_millis(10));
-                    }
+                    print!("Press ENTER to exit..\n");
+                    let mut buffer = [0];
+                    stdin().read_exact(&mut buffer).unwrap();
+                    std::process::exit(0);
                 }
                 self.pc = target.into();
+            }
+            0x02 => {
+                // Calls subroutine at NNN.
+
+                // store current value of PC on the stack
+
+                self.sp -= 2;
+                self.memory[self.sp] = ((self.pc + 2) >> 8) as u8;
+                self.memory[self.sp + 1] = ((self.pc + 2) & 0xff) as u8;
+
+                self.pc = opcode.nnn().into();
             }
             0x03 => {
                 // Skips the next instruction if VX equals NN.
