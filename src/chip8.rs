@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::{self, stdin, Read, Write};
+use std::time::SystemTime;
 
 use crate::screen::Screen;
 
@@ -110,6 +111,9 @@ impl Opcode {
 
                 debug!("mov\t\tI, {:03x}", self.nnn());
             }
+            0x0c => {
+                debug!("rnd\t\tV{:01x}", self.x());
+            }
             0x0d => {
                 // draw(Vx,Vy,N)
                 debug!(
@@ -135,6 +139,15 @@ impl Opcode {
     }
 }
 
+fn rand(seed: u64) -> u64 {
+    // https://en.wikipedia.org/wiki/Xorshift
+    let mut rnd = seed;
+    rnd ^= rnd << 13;
+    rnd ^= rnd >> 7;
+    rnd ^= rnd << 17;
+    return rnd;
+}
+
 pub struct Chip8<T> {
     ///  16 8-bit data registers named V0 to VF
     v: [u8; 16],
@@ -155,6 +168,9 @@ pub struct Chip8<T> {
     used_memory: usize,
 
     screen: T,
+
+    /// Seed for a random number generator
+    seed: u64,
 }
 
 impl<T: Screen> Chip8<T> {
@@ -167,6 +183,10 @@ impl<T: Screen> Chip8<T> {
             memory: [0; MEMORY_SIZE],
             used_memory: 0,
             screen: screen,
+            seed: SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .expect("Time go backwards!")
+                .as_secs(),
         }
     }
 
@@ -278,6 +298,11 @@ impl<T: Screen> Chip8<T> {
                 //Sets I to the address NNN
                 self.i = opcode.nnn();
             }
+            0x0c => {
+                // Sets VX to the result of a bitwise and operation on a
+                // random number (0 to 255) and NN
+                self.v[opcode.x()] = (self.rand_gen()) as u8 & opcode.1;
+            }
             0x0d => {
                 self.op_draw(
                     self.v[opcode.x()].into(),
@@ -362,6 +387,12 @@ impl<T: Screen> Chip8<T> {
             }
         }
         self.screen.present();
+    }
+
+    fn rand_gen(&mut self) -> u64 {
+        let number = rand(self.seed);
+        self.seed = number;
+        return number;
     }
 
     pub fn emulate(&mut self) {
