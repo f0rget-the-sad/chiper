@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::{self, stdin, Read, Write};
-use std::time::SystemTime;
+use std::thread;
+use std::time::{self, SystemTime};
 
 use crate::screen::Screen;
 
@@ -167,7 +168,20 @@ impl Opcode {
             }
             0x0f => match self.1 {
                 0x1e => {
+                    // Adds VX to I. VF is not affected
                     debug!("add\t\tI, V{:01x}", self.x());
+                }
+                0x55 => {
+                    // Stores V0 to VX (including VX) in memory starting at
+                    // address I. The offset from I is increased by 1 for each
+                    // value written, but I itself is left unmodified
+                    debug!("movm\t\tI, V0-V{:01x}", self.x());
+                }
+                0x65 => {
+                    // Fills V0 to VX (including VX) with values from memory
+                    // starting at address I. The offset from I is increased by
+                    // 1 for each value written, but I itself is left unmodified
+                    debug!("movm\t\tV0-V{:01x}, I", self.x());
                 }
                 _ => {
                     debug!("Opcode is not handled yet");
@@ -286,9 +300,14 @@ impl<T: Screen> Chip8<T> {
         match Opcode::high_nib(opcode.0) {
             0x00 => match opcode.1 {
                 0xe0 => self.op_disp_clear(),
-                //0xee => {
-                //    debug!("return;");
-                //}
+                0xee => {
+                    //Returns from a subroutine.
+
+                    // restore pc from the stack memory
+                    self.pc = (((self.memory[self.sp] as u16) << 8) | (self.memory[self.sp + 1]) as u16) as usize;
+                    // increase stack size back
+                    self.sp += 2;
+                }
                 _ => unimplemented!(),
             },
             0x01 => {
@@ -305,7 +324,7 @@ impl<T: Screen> Chip8<T> {
             0x02 => {
                 // Calls subroutine at NNN.
 
-                // store current value of PC on the stack
+                // store current value of next instruction on the stack
 
                 self.sp -= 2;
                 self.memory[self.sp] = ((self.pc + 2) >> 8) as u8;
@@ -412,6 +431,24 @@ impl<T: Screen> Chip8<T> {
                     // Adds VX to I. VF is not affected
                     self.i = self.i.wrapping_add(self.v[opcode.x()].into());
                 }
+                0x55 => {
+                    // Stores V0 to VX (including VX) in memory starting at
+                    // address I. The offset from I is increased by 1 for each
+                    // value written, but I itself is left unmodified
+                    for i in 0..opcode.x() {
+                        self.memory[self.i as usize + i] = self.v[i];
+                    }
+                    self.i += opcode.x() as u16 + 1;
+                }
+                0x65 => {
+                    // Fills V0 to VX (including VX) with values from memory
+                    // starting at address I. The offset from I is increased by
+                    // 1 for each value written, but I itself is left unmodified
+                    for i in 0..opcode.x() {
+                        self.v[i] = self.memory[self.i as usize + i];
+                    }
+                    self.i += opcode.x() as u16 + 1;
+                }
                 _ => unimplemented!(),
             },
             _ => unimplemented!(),
@@ -495,6 +532,7 @@ impl<T: Screen> Chip8<T> {
     pub fn emulate(&mut self) {
         loop {
             self.emulate_op();
+            thread::sleep(time::Duration::from_millis(30));
         }
     }
 
