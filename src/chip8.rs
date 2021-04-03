@@ -145,7 +145,9 @@ impl Opcode {
                         // Stores the most significant bit of VX in VF and then shifts VX to the left by 1
                         debug!("shl\t\tV{:01x}", self.x());
                     }
-                    _ => debug!("UNKNOWN")
+                    _ => {
+                        debug!("UNKNOWN");
+                    }
                 }
 
             }
@@ -297,6 +299,8 @@ impl<T: Screen> Chip8<T> {
         let opcode = Opcode(self.memory[self.pc], self.memory[self.pc + 1]);
         opcode.disassemble(self.pc);
 
+        let mut pc_inc_required = true;
+
         match Opcode::high_nib(opcode.0) {
             0x00 => match opcode.1 {
                 0xe0 => self.op_disp_clear(),
@@ -307,6 +311,7 @@ impl<T: Screen> Chip8<T> {
                     self.pc = (((self.memory[self.sp] as u16) << 8) | (self.memory[self.sp + 1]) as u16) as usize;
                     // increase stack size back
                     self.sp += 2;
+                    pc_inc_required = false;
                 }
                 _ => unimplemented!(),
             },
@@ -320,6 +325,7 @@ impl<T: Screen> Chip8<T> {
                     std::process::exit(0);
                 }
                 self.pc = target.into();
+                pc_inc_required = false;
             }
             0x02 => {
                 // Calls subroutine at NNN.
@@ -331,6 +337,7 @@ impl<T: Screen> Chip8<T> {
                 self.memory[self.sp + 1] = ((self.pc + 2) & 0xff) as u8;
 
                 self.pc = opcode.nnn().into();
+                pc_inc_required = false;
             }
             0x03 => {
                 // Skips the next instruction if VX equals NN.
@@ -435,31 +442,26 @@ impl<T: Screen> Chip8<T> {
                     // Stores V0 to VX (including VX) in memory starting at
                     // address I. The offset from I is increased by 1 for each
                     // value written, but I itself is left unmodified
-                    for i in 0..opcode.x() {
+                    for i in 0..=opcode.x() {
                         self.memory[self.i as usize + i] = self.v[i];
                     }
-                    self.i += opcode.x() as u16 + 1;
                 }
                 0x65 => {
                     // Fills V0 to VX (including VX) with values from memory
                     // starting at address I. The offset from I is increased by
                     // 1 for each value written, but I itself is left unmodified
-                    for i in 0..opcode.x() {
+                    for i in 0..=opcode.x() {
                         self.v[i] = self.memory[self.i as usize + i];
                     }
-                    self.i += opcode.x() as u16 + 1;
                 }
                 _ => unimplemented!(),
             },
             _ => unimplemented!(),
         }
 
-        match Opcode::high_nib(opcode.0) {
-            // one of the JUMP instruction, this will change the PC by itself,
-            // not need to increment it
-            0x01 => {}
-            // regular opcode, move forward to the next one
-            _ => self.inc_pc(),
+        // increment pc if, no jump, call or ret was called
+        if pc_inc_required {
+            self.inc_pc();
         }
     }
 
@@ -532,7 +534,7 @@ impl<T: Screen> Chip8<T> {
     pub fn emulate(&mut self) {
         loop {
             self.emulate_op();
-            thread::sleep(time::Duration::from_millis(30));
+            //thread::sleep(time::Duration::from_millis(30));
         }
     }
 
