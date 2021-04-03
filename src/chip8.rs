@@ -106,6 +106,48 @@ impl Opcode {
                 // Adds NN to VX. (Carry flag is not changed)
                 debug!("add\t\tV{:01x}, {:02x}", self.x(), self.1);
             }
+            0x08 => {
+                match Opcode::low_nib(self.1) {
+                    0x0 => {
+                        // Sets VX to the value of VY.
+                        debug!("mov\t\tV{:01x}, V{:01x}", self.x(), self.y());
+                    }
+                    0x1 => {
+                        // Sets VX to VX or VY. (Bitwise OR operation)
+                        debug!("or\t\tV{:01x}, V{:01x}", self.x(), self.y());
+                    }
+                    0x2 => {
+                        // Sets VX to VX and VY. (Bitwise AND operation)
+                        debug!("and\t\tV{:01x}, V{:01x}", self.x(), self.y());
+                    }
+                    0x3 => {
+                        // Sets VX to VX xor VY.
+                        debug!("xor\t\tV{:01x}, V{:01x}", self.x(), self.y());
+                    }
+                    0x4 => {
+                        // Adds VY to VX. VF is set to 1 when there's a carry, and to 0 when there isn't.
+                        debug!("addwc\t\tV{:01x}, V{:01x}", self.x(), self.y());
+                    }
+                    0x5 => {
+                        // VY is subtracted from VX. VF is set to 0 when there's a borrow, and 1 when there isn't.
+                        debug!("subwc\t\tV{:01x}, V{:01x}", self.x(), self.y());
+                    }
+                    0x6 => {
+                        // Stores the least significant bit of VX in VF and then shifts VX to the right by 1
+                        debug!("shr\t\tV{:01x}", self.x());
+                    }
+                    0x7 => {
+                        // Sets VX to VY minus VX. VF is set to 0 when there's a borrow, and 1 when there isn't.
+                        debug!("subwc\t\tV{:01x}, V{:01x}, V{:01x}", self.x(), self.y(), self.x());
+                    }
+                    0xe => {
+                        // Stores the most significant bit of VX in VF and then shifts VX to the left by 1
+                        debug!("shl\t\tV{:01x}", self.x());
+                    }
+                    _ => debug!("UNKNOWN")
+                }
+
+            }
             0x0a => {
                 //Sets I to the address NNN
 
@@ -220,7 +262,13 @@ impl<T: Screen> Chip8<T> {
 
     pub fn dump_memory(&self) {
         let mut pc = MEMORY_START;
-        for two_bytes in self.memory[MEMORY_START..MEMORY_START + self.used_memory].chunks(2) {
+        let mut memory_end = MEMORY_START + self.used_memory;
+        // ensure that we are 2 bytes alighned
+        // XXX: not sure it's usefull for actual program or just for debugging
+        if memory_end %2 != 0 {
+            memory_end += 1;
+        }
+        for two_bytes in self.memory[MEMORY_START..memory_end].chunks(2) {
             let opcode = Opcode(two_bytes[0], two_bytes[1]);
             opcode.disassemble(pc);
             pc += 2;
@@ -293,6 +341,55 @@ impl<T: Screen> Chip8<T> {
             0x07 => {
                 // Adds NN to VX. (Carry flag is not changed)
                 self.v[opcode.x()] = self.v[opcode.x()].wrapping_add(opcode.1);
+            }
+            0x08 => {
+                match Opcode::low_nib(opcode.1) {
+                    0x0 => {
+                        // Sets VX to the value of VY.
+                        self.v[opcode.x()] = self.v[opcode.y()];
+                    }
+                    0x1 => {
+                        // Sets VX to VX or VY. (Bitwise OR operation)
+                        self.v[opcode.x()] |= self.v[opcode.y()];
+                    }
+                    0x2 => {
+                        // Sets VX to VX and VY. (Bitwise AND operation)
+                        self.v[opcode.x()] &= self.v[opcode.y()];
+                    }
+                    0x3 => {
+                        // Sets VX to VX xor VY.
+                        self.v[opcode.x()] ^= self.v[opcode.y()];
+                    }
+                    0x4 => {
+                        // Adds VY to VX. VF is set to 1 when there's a carry, and to 0 when there isn't.
+                        let (val, carry) = self.v[opcode.x()].overflowing_add(self.v[opcode.y()]);
+                        self.v[opcode.x()] = val;
+                        self.v[0xf] = carry as u8;
+                    }
+                    0x5 => {
+                        // VY is subtracted from VX. VF is set to 0 when there's a borrow, and 1 when there isn't.
+                        let (val, borrow) = self.v[opcode.x()].overflowing_sub(self.v[opcode.y()]);
+                        self.v[opcode.x()] = val;
+                        self.v[0xf] = (!borrow) as u8;
+                    }
+                    0x6 => {
+                        // Stores the least significant bit of VX in VF and then shifts VX to the right by 1
+                        self.v[0xf] = self.v[opcode.x()] & 0x1;
+                        self.v[opcode.x()] >>= 1;
+                    }
+                    0x7 => {
+                        // Sets VX to VY minus VX. VF is set to 0 when there's a borrow, and 1 when there isn't.
+                        let (val, borrow) = self.v[opcode.y()].overflowing_sub(self.v[opcode.x()]);
+                        self.v[opcode.x()] = val;
+                        self.v[0xf] = (!borrow) as u8;
+                    }
+                    0xe => {
+                        // Stores the most significant bit of VX in VF and then shifts VX to the left by 1
+                        self.v[0xf] = self.v[opcode.x()] & 0x1;
+                        self.v[opcode.x()] <<= 1;
+                    }
+                    _ => unreachable!("UNKNOW COMMAND: {:02x} {:02x}", opcode.0, opcode.1)
+                }
             }
             0x0a => {
                 //Sets I to the address NNN
