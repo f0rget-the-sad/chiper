@@ -15,7 +15,7 @@ use crate::screen::Screen;
 
 const MEMORY_START: usize = 0x200;
 const MEMORY_SIZE: usize = 0x1000;
-pub const SCREEN_WIDTH: u32 = 62;
+pub const SCREEN_WIDTH: u32 = 64;
 pub const SCREEN_HEIGHT: u32 = 32;
 
 const STACK_MEMORY_END: usize = 0xf00;
