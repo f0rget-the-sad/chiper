@@ -14,3 +14,4 @@ bindings](https://crates.io/crates/sdl2).
 - https://en.wikipedia.org/wiki/CHIP-8
 - https://chip-8.github.io/links/
 - http://www.emulator101.com/chip-8-emulator.html
+- https://github.com/dmatlack/chip8
