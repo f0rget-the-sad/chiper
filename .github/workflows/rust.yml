@@ -16,6 +16,10 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    - name: Setup Dependencies
+      run: |
+        sudo apt-get update -y
+        sudo apt-get -y install libsdl2-dev
     - name: FMT
       run: cargo fmt -v -- --check
     - name: Build
