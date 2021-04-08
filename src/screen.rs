@@ -29,6 +29,19 @@ pub trait Screen {
     fn present(&mut self);
 }
 
+/// Stabs for testing without Screen
+pub struct NoScreen {}
+
+impl Screen for NoScreen {
+    fn clear(&mut self) {}
+
+    fn draw_px(&mut self, _x: i32, _y: i32) {}
+
+    fn clear_px(&mut self, _x: i32, _y: i32) {}
+
+    fn present(&mut self) {}
+}
+
 pub struct SdlScreen {
     canvas: Canvas<Window>,
 }
