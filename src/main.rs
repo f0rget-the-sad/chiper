@@ -1,12 +1,11 @@
 #[allow(clippy::print_with_newline)]
-
 mod chip8;
 mod screen;
 
+use chip8::Chip8;
 use std::env;
 use std::io::{self, Error, ErrorKind};
 use std::process;
-use chip8::Chip8;
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();

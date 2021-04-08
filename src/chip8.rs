@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io::{self, stdin, Read, Write};
-use std::time::{SystemTime};
+use std::time::SystemTime;
 
 use crate::screen::Screen;
 
@@ -253,7 +253,6 @@ impl<T: Screen> Chip8<T> {
     }
 
     fn load_from_slice(&mut self, slice: &[u8]) {
-
         // CHIP-8 convention puts programs in memory at `MEMORY_START`
         // They will all have hardcoded addresses expecting that
         self.memory[MEMORY_START..MEMORY_START + slice.len()].copy_from_slice(&slice[..]);
@@ -601,7 +600,7 @@ mod tests {
 
     #[test]
     fn test_op_02xx_call() {
-        let mut chip8 = Chip8::new(NoScreen{});
+        let mut chip8 = Chip8::new(NoScreen {});
         //call  345
         chip8.load_from_slice(&[0x23, 0x45]);
         chip8.emulate_op();
@@ -613,7 +612,7 @@ mod tests {
 
     #[test]
     fn test_op_00ee_ret() {
-        let mut chip8 = Chip8::new(NoScreen{});
+        let mut chip8 = Chip8::new(NoScreen {});
         //200: call 204
         //202: 0000
         //204: ret
@@ -626,7 +625,7 @@ mod tests {
 
     #[test]
     fn test_op_a_mov_toi() {
-        let mut chip8 = Chip8::new(NoScreen{});
+        let mut chip8 = Chip8::new(NoScreen {});
         //a2 20   mov             I, 220
         chip8.load_from_slice(&[0xa2, 0x20]);
         chip8.emulate_op();
@@ -635,7 +634,7 @@ mod tests {
 
     #[test]
     fn test_op_fx55_reg_dump() {
-        let mut chip8 = Chip8::new(NoScreen{});
+        let mut chip8 = Chip8::new(NoScreen {});
         let mut ops = vec![];
         // mov I, 300
         ops.push(0xa3);
@@ -663,7 +662,7 @@ mod tests {
 
     #[test]
     fn test_op_fx65_reg_load() {
-        let mut chip8 = Chip8::new(NoScreen{});
+        let mut chip8 = Chip8::new(NoScreen {});
         let mut ops = vec![];
         // mov I, 200
         ops.push(0xa2);
