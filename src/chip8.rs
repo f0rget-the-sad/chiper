@@ -1,7 +1,6 @@
 use std::fs::File;
 use std::io::{self, stdin, Read, Write};
-use std::thread;
-use std::time::{self, SystemTime};
+use std::time::{SystemTime};
 
 use crate::screen::Screen;
 
@@ -208,7 +207,7 @@ fn rand(seed: u64) -> u64 {
     rnd ^= rnd << 13;
     rnd ^= rnd >> 7;
     rnd ^= rnd << 17;
-    return rnd;
+    rnd
 }
 
 pub struct Chip8<T> {
@@ -245,7 +244,7 @@ impl<T: Screen> Chip8<T> {
             pc: MEMORY_START,
             memory: [0; MEMORY_SIZE],
             used_memory: 0,
-            screen: screen,
+            screen,
             seed: SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .expect("Time go backwards!")
@@ -546,13 +545,12 @@ impl<T: Screen> Chip8<T> {
     fn rand_gen(&mut self) -> u64 {
         let number = rand(self.seed);
         self.seed = number;
-        return number;
+        number
     }
 
     pub fn emulate(&mut self) {
         loop {
             self.emulate_op();
-            //thread::sleep(time::Duration::from_millis(30));
         }
     }
 
@@ -565,7 +563,7 @@ impl<T: Screen> Chip8<T> {
         let mut last_cmd = String::new();
         loop {
             print!("(chiper - db) ");
-            io::stdout().flush().ok().expect("Could not flush stdout");
+            io::stdout().flush().expect("Could not flush stdout");
             stdin().read_line(&mut buffer)?;
             let mut cmd = buffer.trim_end();
             if cmd.is_empty() {

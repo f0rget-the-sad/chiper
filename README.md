@@ -1,4 +1,7 @@
 # Chiper
+
+![CI](https://github.com/f0rget/lisper/workflows/Rust/badge.svg?branch=master)
+
 Yep, one more implementation of CHIP-8 emulator written in rust
 
 ## Demos

@@ -1,3 +1,5 @@
+#[allow(clippy::print_with_newline)]
+
 mod chip8;
 mod screen;
 

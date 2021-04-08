@@ -1,7 +1,5 @@
 extern crate sdl2;
 
-use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::Canvas;
@@ -69,7 +67,7 @@ impl SdlScreen {
             .build()
             .map_err(|e| e.to_string())?;
 
-        Ok(SdlScreen { canvas: canvas })
+        Ok(SdlScreen { canvas })
     }
 }
 
@@ -113,47 +111,4 @@ pub fn sdl_init() -> Result<SdlScreen, String> {
     let mut screen = SdlScreen::from_sdl_conext(&sdl_context)?;
     screen.clear();
     Ok(screen)
-}
-
-pub fn run() -> Result<(), String> {
-    let sdl_context = sdl2::init()?;
-    let mut screen = SdlScreen::from_sdl_conext(&sdl_context)?;
-
-    screen.clear();
-
-    let mut events = sdl_context.event_pump()?;
-
-    let mut cnt = 0;
-    'mainloop: loop {
-        for event in events.poll_iter() {
-            match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Option::Some(Keycode::Escape),
-                    ..
-                } => break 'mainloop,
-                //Event::MouseButtonDown { x, y, .. } => {
-                //    screen.fill_rect((0 + cnt * SdlScreen::PX_SIZE) as i32, 0);
-                //    cnt += 1;
-                //}
-                Event::KeyDown {
-                    keycode: Option::Some(Keycode::Q),
-                    ..
-                } => {
-                    cnt -= 1;
-                    screen.clear_px(cnt as i32, 0);
-                }
-                Event::KeyDown {
-                    keycode: Option::Some(Keycode::W),
-                    ..
-                } => {
-                    screen.draw_px(cnt as i32, 0);
-                    cnt += 1;
-                }
-                _ => {}
-            }
-        }
-    }
-
-    Ok(())
 }
