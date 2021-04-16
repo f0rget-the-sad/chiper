@@ -266,7 +266,7 @@ impl<T: Screen> Chip8<T> {
         // read the whole file into buffer
         file.read_to_end(&mut buffer)?;
 
-        if buffer.len() <= PROGRAM_MEMORY_SIZE {
+        if buffer.len() >= PROGRAM_MEMORY_SIZE {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 "Program size is too big!",
