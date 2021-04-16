@@ -255,7 +255,7 @@ impl<T: Screen> Chip8<T> {
     fn load_from_slice(&mut self, slice: &[u8]) {
         // CHIP-8 convention puts programs in memory at `MEMORY_START`
         // They will all have hardcoded addresses expecting that
-        self.memory[MEMORY_START..MEMORY_START + slice.len()].copy_from_slice(&slice[..]);
+        self.memory[MEMORY_START..MEMORY_START + slice.len()].copy_from_slice(slice);
         self.used_memory = slice.len();
     }
 
