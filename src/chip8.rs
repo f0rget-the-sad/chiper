@@ -19,7 +19,7 @@ pub const SCREEN_WIDTH: u32 = 64;
 pub const SCREEN_HEIGHT: u32 = 32;
 
 const STACK_MEMORY_END: usize = 0xf00;
-const SCREEN_MEMORY_START: u32 = 0xf00;
+const SCREEN_MEMORY_START: usize = 0xf00;
 //const SCREEN_MEMORY_END: u32 = 0xfff;
 
 // TODO: use logger?
@@ -490,6 +490,12 @@ impl<T: Screen> Chip8<T> {
         self.screen.present();
     }
 
+    /// translates pixel location on screen to pixel location in memory
+    /// returns idx of line and position in that line
+    fn get_screen_memory_px(&mut self, x: usize, y: usize) -> (usize, usize) {
+        (SCREEN_MEMORY_START + y * 8 + x / 8, 7 - (x % 8))
+    }
+
     /// Draw the sprite
     fn op_draw(&mut self, x: usize, y: usize, len: u8) {
         // Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels and a height
@@ -498,6 +504,7 @@ impl<T: Screen> Chip8<T> {
         // described above, VF is set to 1 if any screen pixels are flipped from set to
         // unset when the sprite is drawn, and to 0 if that doesn’t happen
         let mut cy;
+        self.v[0xf] = 0;
         for i in 0..len {
             cy = y + i as usize;
             if cy >= SCREEN_HEIGHT as usize {
@@ -510,28 +517,37 @@ impl<T: Screen> Chip8<T> {
             for bi in (0..8).rev() {
                 let mut px = ((sprite_line & (1 << bi)) != 0) as u8;
 
+                if cx >= SCREEN_WIDTH as usize {
+                    // sprite goes out of screen, stop drawing line
+                    break;
+                }
+
+                // if sprite px is 0, just skip it, it takes not affect to
+                // the current screen
                 if px != 0 {
-                    if cx >= SCREEN_WIDTH as usize {
-                        // sprite goes out of screen, stop drawing line
-                        break;
-                    }
                     // Determine the address of the effected byte on the screen
-                    let screen_line_idx = SCREEN_MEMORY_START as usize + cy * 8 + cx / 8;
+                    // Required to check 
+                    let (screen_line_idx, screen_px_idx) = self.get_screen_memory_px(cx, cy);
                     let screen_line = self.memory[screen_line_idx];
                     // Determine the effected bit in the byte
-                    let screen_px = screen_line & (1 << (cx % 8));
+                    // println!("{}", screen_px_idx);
+                    let screen_px = screen_line & (1 << screen_px_idx);
                     if screen_px != 0 {
                         self.v[0xf] = 1;
                     }
 
                     // Write the effected bit to the screen memory
-                    self.memory[screen_line_idx] ^= px;
+                    self.memory[screen_line_idx] ^= 1 << screen_px_idx;
+                    // println!("{} {} {:b} {:02x}", screen_line_idx, screen_px_idx, self.memory[screen_line_idx], self.memory[screen_line_idx]);
 
                     // draw px
                     px ^= screen_px;
                     if px == 0 {
+                        //unreachable!();
+                        // println!("clr - {}:{}", cx, cy);
                         self.screen.clear_px(cx as i32, cy as i32);
                     } else {
+                        // println!("drw - {}:{}", cx, cy);
                         self.screen.draw_px(cx as i32, cy as i32);
                     }
                 }
@@ -684,5 +700,35 @@ mod tests {
         for i in 0..16 {
             assert_eq!(chip8.v[i], i as u8);
         }
+    }
+
+    #[test]
+    fn test_op_dxyn_draw() {
+        let mut chip8 = Chip8::new(NoScreen {});
+        let (x, y): (usize, usize) = (0, 0);
+        let ops = vec![
+            0x62, x as u8, // mov             V2, 0a
+            0x63, y as u8, // mov             V3, 0c
+            0xa2, 0x08,    // mov             I, 208
+            0xd2, 0x36,    // draw            V2, V3, 6
+        ];
+        let sprite = vec![
+            0xba, 0x7c, // sprite data
+            0xd6, 0xfe, // sprite data
+            0x54, 0xaa, // sprite data
+        ];
+        let mut prog = vec![];
+        prog.extend(&ops);
+        prog.extend(&sprite);
+        chip8.load_from_slice(&prog);
+
+        for _ in 0..4 {
+            chip8.emulate_op();
+        }
+        //for i in 0..6 {
+            let (line, _pos) = chip8.get_screen_memory_px(x, y);
+            print!("{:02x} ", chip8.memory[line]);
+        //}
+        print!("\n");
     }
 }
