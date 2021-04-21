@@ -5,6 +5,7 @@
 Yep, one more implementation of CHIP-8 emulator written in rust
 
 ## Demos
+![Particles](demos/particles.gif)
 ![Fishie](demos/Fishie.png)
 ![Maze](demos/Maze.png)
 
