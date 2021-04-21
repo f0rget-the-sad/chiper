@@ -19,7 +19,7 @@ pub const SCREEN_WIDTH: u32 = 64;
 pub const SCREEN_HEIGHT: u32 = 32;
 
 const STACK_MEMORY_END: usize = 0xf00;
-const SCREEN_MEMORY_START: u32 = 0xf00;
+const SCREEN_MEMORY_START: usize = 0xf00;
 //const SCREEN_MEMORY_END: u32 = 0xfff;
 
 // TODO: use logger?
@@ -266,7 +266,7 @@ impl<T: Screen> Chip8<T> {
         // read the whole file into buffer
         file.read_to_end(&mut buffer)?;
 
-        if buffer.len() <= PROGRAM_MEMORY_SIZE {
+        if buffer.len() >= PROGRAM_MEMORY_SIZE {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 "Program size is too big!",
@@ -490,6 +490,32 @@ impl<T: Screen> Chip8<T> {
         self.screen.present();
     }
 
+    /// translates pixel location on screen to pixel location in memory
+    /// returns idx of line and position in that line
+    fn get_screen_memory_px(&mut self, x: usize, y: usize) -> (usize, usize) {
+        (SCREEN_MEMORY_START + y * 8 + x / 8, 7 - (x % 8))
+    }
+
+    #[cfg(test)]
+    // extracts pixels from screen memory and put them to 8-bit aligned vec
+    // basically as sprite stored in roms
+    fn sprite_from_memory(&mut self, x: usize, y: usize, len: usize) -> Vec<u8> {
+        let mut sprite = Vec::with_capacity(len);
+        for yi in y..y + len {
+            let mut sprite_line = 0;
+            for (i, xi) in (x..x + 8).enumerate() {
+                let (line_id, px_id) = self.get_screen_memory_px(xi, yi);
+                let screen_line = self.memory[line_id];
+                let screen_px = screen_line & (1 << px_id);
+                if screen_px != 0 {
+                    sprite_line |= 1 << (7 - i);
+                }
+            }
+            sprite.push(sprite_line);
+        }
+        sprite
+    }
+
     /// Draw the sprite
     fn op_draw(&mut self, x: usize, y: usize, len: u8) {
         // Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels and a height
@@ -498,6 +524,7 @@ impl<T: Screen> Chip8<T> {
         // described above, VF is set to 1 if any screen pixels are flipped from set to
         // unset when the sprite is drawn, and to 0 if that doesn’t happen
         let mut cy;
+        self.v[0xf] = 0;
         for i in 0..len {
             cy = y + i as usize;
             if cy >= SCREEN_HEIGHT as usize {
@@ -510,22 +537,26 @@ impl<T: Screen> Chip8<T> {
             for bi in (0..8).rev() {
                 let mut px = ((sprite_line & (1 << bi)) != 0) as u8;
 
+                if cx >= SCREEN_WIDTH as usize {
+                    // sprite goes out of screen, stop drawing line
+                    break;
+                }
+
+                // if sprite px is 0, just skip it, it takes not affect to
+                // the current screen
                 if px != 0 {
-                    if cx >= SCREEN_WIDTH as usize {
-                        // sprite goes out of screen, stop drawing line
-                        break;
-                    }
                     // Determine the address of the effected byte on the screen
-                    let screen_line_idx = SCREEN_MEMORY_START as usize + cy * 8 + cx / 8;
+                    // Required to check
+                    let (screen_line_idx, screen_px_idx) = self.get_screen_memory_px(cx, cy);
                     let screen_line = self.memory[screen_line_idx];
                     // Determine the effected bit in the byte
-                    let screen_px = screen_line & (1 << (cx % 8));
+                    let screen_px = (screen_line & (1 << screen_px_idx) != 0) as u8;
                     if screen_px != 0 {
                         self.v[0xf] = 1;
                     }
 
                     // Write the effected bit to the screen memory
-                    self.memory[screen_line_idx] ^= px;
+                    self.memory[screen_line_idx] ^= 1 << screen_px_idx;
 
                     // draw px
                     px ^= screen_px;
@@ -595,8 +626,20 @@ impl<T: Screen> Chip8<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    //use sc
     use crate::screen::NoScreen;
+
+    fn print_sprite(sprite: &Vec<u8>) {
+        for line in sprite {
+            for px_id in (0..8).rev() {
+                if line & (1 << px_id) == 0 {
+                    print!(".");
+                } else {
+                    print!("#");
+                }
+            }
+            print!("\n");
+        }
+    }
 
     #[test]
     fn test_op_02xx_call() {
@@ -684,5 +727,80 @@ mod tests {
         for i in 0..16 {
             assert_eq!(chip8.v[i], i as u8);
         }
+    }
+
+    #[test]
+    fn test_op_dxyn_draw() {
+        let mut chip8 = Chip8::new(NoScreen {});
+        let (x, y): (usize, usize) = (6, 11);
+        let ops = vec![
+            0x62, x as u8, // mov             V2, 0a
+            0x63, y as u8, // mov             V3, 0c
+            0xa2, 0x08, // mov             I, 208
+            0xd2, 0x36, // draw            V2, V3, 6
+        ];
+        let sprite = vec![
+            0xba, 0x7c, // sprite data
+            0xd6, 0xfe, // sprite data
+            0x54, 0xaa, // sprite data
+        ];
+        let mut prog = vec![];
+        prog.extend(&ops);
+        prog.extend(&sprite);
+        chip8.load_from_slice(&prog);
+
+        for _ in 0..(ops.len() / 2) {
+            chip8.emulate_op();
+        }
+        let sprite_in_mem = chip8.sprite_from_memory(x, y, sprite.len());
+        assert_eq!(sprite, sprite_in_mem);
+    }
+
+    #[test]
+    fn test_op_dxyn_draw_inverse() {
+        let mut chip8 = Chip8::new(NoScreen {});
+        let (x, y): (usize, usize) = (6, 11);
+        let ops = vec![
+            0x62, x as u8, // mov             V2, 0a
+            0x63, y as u8, // mov             V3, 0c
+            0xa2, 0x0c, // mov             I, 20a
+            0xd2, 0x36, // draw            V2, V3, 6
+            0xa2, 0x12, // mov             I, 20c
+            0xd2, 0x36, // draw            V2, V3, 6
+        ];
+        let sprite = vec![
+            0xba, 0x7c, // sprite data
+            0xd6, 0xfe, // sprite data
+            0x54, 0xaa, // sprite data
+        ];
+        // basicly by aplying this sprite to any other sprite should invert it's
+        // pixels to opossite colour
+        let sprite_inverse = vec![
+            0xff, 0xff, // sprite data
+            0xff, 0xff, // sprite data
+            0xff, 0xff, // sprite data
+        ];
+        let mut prog = vec![];
+        prog.extend(&ops);
+        prog.extend(&sprite);
+        prog.extend(&sprite_inverse);
+        chip8.load_from_slice(&prog);
+        chip8.dump_memory();
+        let mut expected_screen_sprite = vec![];
+        for sp in &sprite {
+            expected_screen_sprite.push(sp ^ 0xff);
+        }
+        print!("Original sprite: \n");
+        print_sprite(&sprite);
+
+        print!("Inverted sprite: \n");
+        print_sprite(&expected_screen_sprite);
+
+        for _ in 0..(ops.len() / 2) {
+            chip8.emulate_op();
+        }
+        let sprite_in_mem = chip8.sprite_from_memory(x, y, sprite.len());
+        assert_eq!(expected_screen_sprite, sprite_in_mem);
+        println!("{:?}", sprite_in_mem);
     }
 }
